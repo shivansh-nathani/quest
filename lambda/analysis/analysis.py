@@ -2,7 +2,7 @@ import io
 import json
 import boto3
 import pandas as pd
-
+import os
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     1. Trims and normalizes all column headers (lowercase, stripped, spaces to underscores).
@@ -21,7 +21,7 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def run_analysis():
     s3_client = boto3.client('s3')
-    bucket_name = "shvnsh-rearc-quest"
+    bucket_name = os.environ['BUCKET_NAME']
     
     print("--- Phase 1: Processing BLS Time Series Data ---")
     

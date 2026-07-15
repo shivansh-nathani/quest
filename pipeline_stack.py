@@ -68,7 +68,10 @@ class DataPipelineStack(Stack):
 
         # 3. Tell Lambda 3 to consume messages from the SQS Queue
         lambda_3.add_event_source(
-            event_sources.SqsEventSource(analysis_queue, batch_size=1)
+            event_sources.SqsEventSource(analysis_queue, batch_size=1),
+            environment={
+                "BUCKET_NAME": data_bucket.bucket_name
+            }
         )
 
         # -------------------------------

@@ -1,16 +1,17 @@
 # Cloud Data Synchronization & API Ingestion Engine
 
 ## 📌 Project Overview
-This repository contains two enterprise-grade data pipelines designed to ingest government and census data into AWS S3. 
+This repository contains enterprise-grade data pipelines designed to ingest government and census data into AWS S3, orchestrate state management, and trigger event-driven analytics. 
 
 * **Part 1:** A multi-threaded synchronization engine that mirrors the Bureau of Labor Statistics (BLS) file directory using DynamoDB for distributed state management.
 * **Part 2:** A resilient API ingestion script that streams Data USA JSON payloads directly into S3 while handling complex network edge cases.
+* **Part 3:** An event-driven analytics pipeline utilizing SQS and AWS Lambda, executing memory-efficient Pandas transformations on the ingested data.
 
-This document outlines the architectural evolution, the problem-solving methodology, and the process of leveraging AI as a development tool—specifically highlighting where AI logic fell short and required strict engineering oversight, prompt engineering, and debugging by the Lead Engineer to achieve production readiness.
+This document outlines the architectural evolution, the problem-solving methodology, and the process of leveraging AI as a development tool—specifically highlighting where AI logic fell short and required strict engineering oversight, prompt engineering, and debugging by the Engineer to achieve production readiness.
 
 ### 🤝 Roles & Collaboration
 To clarify the development process for this project:
-* **Shivansh (Lead Engineer & Architect):** Responsible for problem identification, overarching system design, cost-benefit analysis, security evaluations, and rigorous code auditing. Shivansh utilized advanced prompt engineering to direct the AI, identified its logical blind spots (especially in distributed execution and HTTP protocols), and forced architectural corrections.
+* **Shivansh (Engineer):** Responsible for problem identification, overarching system design, cost-benefit analysis, security evaluations, and rigorous code auditing. Shivansh utilized advanced prompt engineering to direct the AI, identified its logical blind spots (especially in distributed execution and HTTP protocols), and forced architectural corrections.
 * **AI (Pair Programmer):** Utilized to rapidly generate boilerplate code, suggest library implementations (like `boto3` and `urllib3.util.retry`), and format syntax based on Shivansh's explicit prompts.
 
 ---
@@ -49,7 +50,23 @@ To clarify the development process for this project:
 
 ---
 
-## 🐛 AI Oversights & Lead Engineer Corrections
+## 🏗️ Part 3: Event-Driven Analytics & Infrastructure (AWS CDK)
+
+### Phase 1: Spark Migration & Serverless Analytics
+* **The Goal:** Perform complex transformations and aggregations on the ingested JSON data without incurring the heavy infrastructure costs and startup times associated with AWS Glue or EMR clusters.
+* **The Approach:** Shivansh audited the legacy PySpark analytics codebase and orchestrated a complete port to native Python using the Pandas library. By converting the Spark DAGs into memory-efficient Pandas logic, the analytics engine was successfully decoupled from heavy data-processing clusters and refactored to run entirely within a lightweight, serverless AWS Lambda function.
+
+### Phase 2: Event-Driven Orchestration (S3 → SQS → Lambda)
+* **The Goal:** Automate the execution of the Pandas data analysis script strictly when a new Data USA JSON file lands in a specific S3 directory.
+* **The Approach:** Shivansh designed an event-driven architecture using AWS CDK. S3 Event Notifications detect new payloads in `data/datausa/` and push notifications to an Amazon SQS Queue. SQS securely buffers the events and invokes the Pandas analytics Lambda. This decoupled design ensures the ingestion script (Part 2) requires zero code changes to integrate into the broader pipeline.
+
+### Phase 3: Legacy Resource Integration & Migration
+* **The Goal:** Deploy the automated CDK pipeline using an S3 bucket and DynamoDB table that were already manually provisioned, and migrate the stack to the `eu-north-1` region.
+* **The Approach:** Shivansh refactored the CDK infrastructure code to use `.from_bucket_name()` and `.from_table_name()`. This transformed the CDK script from a resource *creator* to a resource *importer*, avoiding `BucketAlreadyExists` stack collisions. A new regional `cdk bootstrap` was executed, bridging the existing data layer with the new automated compute layer seamlessly.
+
+---
+
+## 🐛 AI Oversights & Engineer Corrections
 
 While the AI was highly effective at generating boilerplate, it routinely missed critical systems-level edge cases. Below are the specific scenarios where Shivansh audited the AI's output, diagnosed the flaws, and engineered prompts to fix them.
 
@@ -73,6 +90,10 @@ While the AI was highly effective at generating boilerplate, it routinely missed
 * **The AI's Mistake:** For the API ingestion script, the AI used `response.raise_for_status()` as the validation guardrail before uploading to S3. 
 * **The Correction:** Shivansh recognized that `raise_for_status()` broadly accepts *any* 2xx code. If the API returned a `204 No Content` or `206 Partial Content`, the script would happily stream incomplete or empty data to S3. Shivansh prompted the AI to remove the native function and enforce a strict, exact integer match for `200 OK` to guarantee data payload integrity.
 
+### 6. The Hardcoded Resource Collision (CDK)
+* **The AI's Mistake:** The AI generated CDK boilerplate utilizing `s3.Bucket(...)` constructors, attempting to mint brand new resources for an infrastructure that already existed manually.
+* **The Correction:** Shivansh recognized this would trigger an immediate CloudFormation rollback. He explicitly directed the AI to utilize static import methods (`.from_bucket_name()`) to safely wrap the existing data layer without collision.
+
 ---
 
 ## ⚙️ Final System Architecture
@@ -89,3 +110,12 @@ The final production scripts utilize the following architectures designed by Shi
 1.  **Resilient Session:** Utilizes `urllib3` adapters to automatically manage exponential backoffs for 429 and 5xx API errors.
 2.  **Strict Validation:** Enforces a rigid `200 OK` check before initializing S3 connectivity.
 3.  **Memory-Safe Streaming:** Pipes the raw network buffer directly into AWS via `upload_fileobj`, utilizing zero local disk space and negligible RAM.
+
+**The Event-Driven Analytics Pipeline (Part 3):**
+1. **The Catalyst:** The Part 2 ingestion script successfully writes a JSON payload to the specific S3 prefix (`data/datausa/`).
+2. **The Invisible Handoff (S3 Event Notification):** S3 natively detects the `OBJECT_CREATED` event and constructs a notification payload without any compute overhead.
+3. **The Message Broker (SQS Queue):** The S3 payload is securely queued in an Amazon SQS buffer configured with a 6-minute visibility timeout to prevent duplicate processing.
+4. **The Analytics Engine (Lambda + Pandas):** SQS triggers a memory-optimized Lambda function (1024MB) augmented by an AWS Managed Pandas Layer. The inline Python script pulls the target file from S3, executes the Pandas transformations natively (bypassing AWS Glue), and gracefully terminates.
+
+---
+*💡 **Note:** Architecture and thoughts are my own, articulated by AI. Vibe-coded with AI.*
