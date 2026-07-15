@@ -185,27 +185,42 @@ def multi_thread_sync(base_url, headers, bucket_name, s3_prefix, table_name, max
 
     print("\n[*] Multi-Threaded Cloud Sync Engine Cycle Complete.")
 
-if __name__ == '__main__':
+def handler(event, context):
+    """
+    AWS Lambda Entry Point
+    """
+    print("[-] Starting BLS Data Sync Lambda...")
+    
+    # Configuration
     TARGET_URL = "https://download.bls.gov/pub/time.series/pr/" 
     HEADERS = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'max-age=0',
-        'Cookie': 'nmstat=998b73d4-ac17-51da-a2f8-0d658e3cd772',
-        'Referer': 'https://github.com/rearc-data/quest',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
+        'User-Agent': 'hello@gmail.com',
+        'Sec-Ch-Ua-Platform': '"Linux"'
     }
 
-    S3_BUCKET_NAME = "shvnsh-rearc-quest"
-    S3_STORE_PREFIX = "data/bls_data"          
-    DYNAMODB_TABLE_NAME = "bls_sync_state" 
-    WORKER_THREADS = 10 
 
-    multi_thread_sync(
-        base_url=TARGET_URL,
-        headers=HEADERS,
-        bucket_name=S3_BUCKET_NAME,
-        s3_prefix=S3_STORE_PREFIX,
-        table_name=DYNAMODB_TABLE_NAME,
-        max_threads=WORKER_THREADS
-    )
+    S3_BUCKET_NAME = os.environ['BUCKET_NAME']
+    S3_STORE_PREFIX = "data/bls_data"          
+    WORKER_THREADS = 2 
+    DYNAMODB_TABLE_NAME = os.environ.get('TABLE_NAME')
+
+    # Trigger the main engine
+    try:
+        multi_thread_sync(
+            base_url=TARGET_URL,
+            headers=HEADERS,
+            bucket_name=S3_BUCKET_NAME,
+            s3_prefix=S3_STORE_PREFIX,
+            table_name=DYNAMODB_TABLE_NAME,
+            max_threads=WORKER_THREADS
+        )
+        
+        return {
+            "statusCode": 200,
+            "message": "BLS Sync cycle completed successfully."
+        }
+        
+    except Exception as e:
+        print(f"[!] Fatal error in Lambda execution: {e}")
+        # Raise the exception so AWS Step Functions knows this step failed
+        raise e
